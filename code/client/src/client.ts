@@ -7,6 +7,7 @@ import type * as dataFE from "@ty-ras/data-frontend";
 import axios, {
   type CreateAxiosDefaults,
   type AxiosInstance,
+  type AxiosRequestConfig,
   AxiosHeaders,
 } from "axios";
 import * as errors from "./errors";
@@ -31,37 +32,13 @@ export const createCallHTTPEndpoint = (
     "config" in args ? axios.create(args.config) : args.instance;
   const reviver = data.getJSONParseReviver(args.allowProtoProperty === true);
 
-  return async ({
-    method,
-    url,
-    query,
-    body: requestBody,
-    headers: requestHeaders,
-  }) => {
-    const urlObject = new URL(url, DUMMY_ORIGIN);
-    if (urlObject.origin !== DUMMY_ORIGIN || urlObject.href === url) {
-      // We were passed an absolute URL -> "escape" it by prepending forward slash so that Axios will always use baseURL
-      url = `/${url}`;
-    }
+  return async (args) => {
     const {
       status,
       headers,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       data: body,
-    } = await instance({
-      method,
-      url: ensureNoQueryOrFragment(url),
-      ...(requestHeaders === undefined
-        ? {}
-        : {
-            headers: new AxiosHeaders(getOutgoingHeaders(requestHeaders)),
-          }),
-      ...(query === undefined ? {} : { params: getURLSearchParams(query) }),
-      ...(requestBody === undefined
-        ? {}
-        : { data: JSON.stringify(requestBody) }),
-      responseType: "text",
-    });
+    } = await instance(getAxiosArgs(args));
 
     if (status < 200 || status >= 300) {
       throw new errors.Non2xxStatusCodeError(status);
@@ -74,7 +51,7 @@ export const createCallHTTPEndpoint = (
         ),
       ),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      body: JSON.parse(body, reviver),
+      body: (body as string).length > 0 ? JSON.parse(body, reviver) : undefined,
     };
   };
 };
@@ -137,6 +114,37 @@ export interface HTTPEndpointCallerOptionsBase {
 }
 
 const DUMMY_ORIGIN = "ftp://__dummy__";
+
+const getAxiosArgs = ({
+  method,
+  url,
+  query,
+  body,
+  headers,
+}: dataFE.HTTPInvocationArguments): AxiosRequestConfig => {
+  const urlObject = new URL(url, DUMMY_ORIGIN);
+  if (urlObject.origin !== DUMMY_ORIGIN || urlObject.href === url) {
+    // We were passed an absolute URL -> "escape" it by prepending forward slash so that Axios will always use baseURL
+    url = `/${url}`;
+  }
+
+  if (body !== undefined) {
+    headers = { ...(headers ?? {}), "content-type": "application/json" }; // TODO ;charset ?
+  }
+
+  return {
+    method,
+    url: ensureNoQueryOrFragment(url),
+    ...(headers === undefined
+      ? {}
+      : {
+          headers: new AxiosHeaders(getOutgoingHeaders(headers)),
+        }),
+    ...(query === undefined ? {} : { params: getURLSearchParams(query) }),
+    ...(body === undefined ? {} : { data: JSON.stringify(body) }),
+    responseType: "text",
+  };
+};
 
 const getURLSearchParams = (query: Record<string, unknown>) =>
   new URLSearchParams(
