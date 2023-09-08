@@ -11,6 +11,7 @@ import axios, {
   AxiosHeaders,
 } from "axios";
 import * as errors from "./errors";
+import * as internal from "./internal";
 
 /**
  * This function will create a {@link dataFE.CallHTTPEndpoint} callback using new or given Axios instance.
@@ -113,8 +114,6 @@ export interface HTTPEndpointCallerOptionsBase {
   allowProtoProperty?: boolean;
 }
 
-const DUMMY_ORIGIN = "ftp://__dummy__";
-
 const getAxiosArgs = ({
   method,
   url,
@@ -122,8 +121,8 @@ const getAxiosArgs = ({
   body,
   headers,
 }: dataFE.HTTPInvocationArguments): AxiosRequestConfig => {
-  const urlObject = new URL(url, DUMMY_ORIGIN);
-  if (urlObject.origin !== DUMMY_ORIGIN || urlObject.href === url) {
+  const urlObject = new URL(url, internal.DUMMY_ORIGIN);
+  if (urlObject.origin !== internal.DUMMY_ORIGIN || urlObject.origin === url) {
     // We were passed an absolute URL -> "escape" it by prepending forward slash so that Axios will always use baseURL
     url = `/${url}`;
   }
@@ -143,6 +142,8 @@ const getAxiosArgs = ({
     ...(query === undefined ? {} : { params: getURLSearchParams(query) }),
     ...(body === undefined ? {} : { data: JSON.stringify(body) }),
     responseType: "text",
+    // Never throw Axios error based on status code
+    validateStatus: () => true,
   };
 };
 

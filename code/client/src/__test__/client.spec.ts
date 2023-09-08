@@ -11,6 +11,7 @@ import type * as net from "node:net";
 
 import * as spec from "../client";
 import * as errors from "../errors";
+import * as internal from "../internal";
 
 test("Verify that raw string variant works", async (c) => {
   c.plan(2);
@@ -123,6 +124,84 @@ test("Test that config-based callback works with complex usecase", async (c) => 
   });
 });
 
+test("Test that non-2xx status code in is handled correctly", async (c) => {
+  c.plan(1);
+
+  const statusCode = 404;
+  const { callback } = await prepareForTest([statusCode]);
+
+  await c.throwsAsync(
+    async () => await callback({ method: "GET", url: "/hello" }),
+    {
+      instanceOf: errors.Non2xxStatusCodeError,
+      message: `Status code ${statusCode} was returned.`,
+    },
+  );
+});
+
+test("Test that using tricky path names will be handled correctly", async (c: ExecutionContext) => {
+  c.plan(2);
+  const { callback, capturedInfo, ...settings } = await prepareForTest();
+
+  const method = "GET";
+  const result = await callback({
+    method,
+    url: "/hello/?injected-query-#-and-fragment/",
+  });
+  const url = "/hello/%3Finjected-query-%23-and-fragment/";
+  c.deepEqual(capturedInfo, [
+    {
+      method,
+      url,
+      body: undefined,
+      headers: getExpectedServerIncomingHeaders({
+        ...settings,
+        method,
+        path: url,
+        scheme: "http",
+      }),
+    },
+  ]);
+  c.deepEqual(result, {
+    body: undefined,
+    headers: getExpectedClientIncomingHeaders(),
+  });
+});
+
+test("Validate that URL sanity check works", async (c) => {
+  c.plan(4);
+  const { callback, capturedInfo, ...settings } = await prepareForTest();
+
+  const verifyURLSanity = async (clientURL: string, serverURL: string) => {
+    capturedInfo.length = 0;
+    const method = "GET";
+    const result = await callback({
+      method,
+      url: clientURL,
+    });
+    c.deepEqual(capturedInfo, [
+      {
+        method,
+        url: serverURL,
+        body: undefined,
+        headers: getExpectedServerIncomingHeaders({
+          ...settings,
+          method,
+          path: serverURL,
+          scheme: "http",
+        }),
+      },
+    ]);
+    c.deepEqual(result, {
+      body: undefined,
+      headers: getExpectedClientIncomingHeaders(),
+    });
+  };
+
+  await verifyURLSanity(internal.DUMMY_ORIGIN, `/${internal.DUMMY_ORIGIN}`);
+  await verifyURLSanity("http://example.com", "/http://example.com");
+});
+
 const prepareForTest = async (
   responses: PreparedServerRespones = [undefined],
 ) => {
@@ -227,9 +306,6 @@ const getExpectedServerIncomingHeaders = (
   {
     host,
     port,
-    scheme,
-    method,
-    path,
   }: Pick<Awaited<ReturnType<typeof prepareForTest>>, "host" | "port"> & {
     path: string;
     method: string;
