@@ -137,7 +137,7 @@ const getAxiosArgs = async (
   if (body !== undefined) {
     headers = {
       ...(headers ?? {}),
-      "content-type": `application/json; charset=${ENCODING}`,
+      "content-type": `application/json; charset=${ENCODER.encoding}`,
     };
   }
 
@@ -154,8 +154,9 @@ const getAxiosArgs = async (
       : { params: dataFE.getURLSearchParams(query) }),
     ...(body === undefined
       ? {}
-      : { data: Buffer.from(JSON.stringify(body), ENCODING) }),
+      : { data: new TextEncoder().encode(JSON.stringify(body)) }),
   };
+
   await processRequestConfig?.(requestConfig);
   return {
     ...requestConfig,
@@ -166,4 +167,4 @@ const getAxiosArgs = async (
   };
 };
 
-const ENCODING: BufferEncoding = "utf8";
+const ENCODER = new TextEncoder();
