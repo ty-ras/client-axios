@@ -3,15 +3,13 @@
  */
 
 import * as data from "@ty-ras/data";
-import type * as dataFE from "@ty-ras/data-frontend";
+import * as dataFE from "@ty-ras/data-frontend";
 import axios, {
   type CreateAxiosDefaults,
   type AxiosInstance,
   type AxiosRequestConfig,
   AxiosHeaders,
 } from "axios";
-import * as errors from "./errors";
-import * as internal from "./internal";
 
 /**
  * This function will create a {@link dataFE.CallHTTPEndpoint} callback using new or given Axios instance.
@@ -43,7 +41,7 @@ export const createCallHTTPEndpoint = (
     } = await instance(await getAxiosArgs(args, processRequestConfig));
 
     if (status < 200 || status >= 300) {
-      throw new errors.Non2xxStatusCodeError(status);
+      throw new dataFE.Non2xxStatusCodeError(status);
     }
 
     return {
@@ -52,8 +50,11 @@ export const createCallHTTPEndpoint = (
           ([, header]) => header !== undefined && header !== null,
         ),
       ),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      body: (body as string).length > 0 ? JSON.parse(body, reviver) : undefined,
+      body:
+        ((body as string | undefined)?.length ?? 0) > 0
+          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            JSON.parse(body, reviver)
+          : undefined,
     };
   };
 };
@@ -133,27 +134,29 @@ const getAxiosArgs = async (
   { method, url, query, body, headers }: dataFE.HTTPInvocationArguments,
   processRequestConfig: AxiosRequestConfigProcessor | undefined,
 ): Promise<AxiosRequestConfig> => {
-  const urlObject = new URL(url, internal.DUMMY_ORIGIN);
-  if (urlObject.origin !== internal.DUMMY_ORIGIN || urlObject.origin === url) {
-    // We were passed an absolute URL -> "escape" it by prepending forward slash so that Axios will always use baseURL
-    url = `/${url}`;
-  }
-
   if (body !== undefined) {
-    headers = { ...(headers ?? {}), "content-type": "application/json" }; // TODO ;charset ?
+    headers = {
+      ...(headers ?? {}),
+      "content-type": `application/json; charset=${ENCODER.encoding}`,
+    };
   }
 
   const requestConfig: AxiosRequestConfig = {
     method,
-    url: ensureNoQueryOrFragment(url),
+    url: dataFE.ensurePathname(url),
     ...(headers === undefined
       ? {}
       : {
-          headers: new AxiosHeaders(getOutgoingHeaders(headers)),
+          headers: new AxiosHeaders(dataFE.getOutgoingHeaders(headers)),
         }),
-    ...(query === undefined ? {} : { params: getURLSearchParams(query) }),
-    ...(body === undefined ? {} : { data: JSON.stringify(body) }),
+    ...(query === undefined
+      ? {}
+      : { params: dataFE.getURLSearchParams(query) }),
+    ...(body === undefined
+      ? {}
+      : { data: new TextEncoder().encode(JSON.stringify(body)) }),
   };
+
   await processRequestConfig?.(requestConfig);
   return {
     ...requestConfig,
@@ -164,38 +167,4 @@ const getAxiosArgs = async (
   };
 };
 
-const getURLSearchParams = (query: Record<string, unknown>) =>
-  new URLSearchParams(
-    Object.entries(query)
-      .filter(([, value]) => value !== undefined)
-      .flatMap<[string, string]>(([qKey, qValue]) =>
-        Array.isArray(qValue)
-          ? qValue.map<[string, string]>((value) => [qKey, `${value}`])
-          : [[qKey, `${qValue}`]],
-      ),
-  );
-
-const ensureNoQueryOrFragment = (path: string) =>
-  path.replaceAll(
-    /\?|#/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-
-const getOutgoingHeaders = (headers: Record<string, unknown> | undefined) =>
-  headers === undefined
-    ? undefined
-    : Object.fromEntries(
-        Object.entries(headers)
-          .filter(([, header]) => header !== undefined)
-          .map(
-            ([headerName, header]) =>
-              [headerName, getOutgoingHeader(header)] as const,
-          ),
-      );
-
-const getOutgoingHeader = (header: unknown): string | number | Array<string> =>
-  typeof header === "string" || typeof header === "number"
-    ? header
-    : Array.isArray(header)
-    ? header.filter((v) => v !== undefined).map((v) => `${v}`)
-    : `${header}`;
+const ENCODER = new TextEncoder();
