@@ -335,7 +335,7 @@ const getExpectedServerIncomingHeaders = (
     ? {}
     : {
         "content-length": `${Buffer.from(body, "utf8").byteLength}`,
-        "content-type": "application/json; charset=utf8",
+        "content-type": "application/json; charset=utf-8",
       }),
 });
 
