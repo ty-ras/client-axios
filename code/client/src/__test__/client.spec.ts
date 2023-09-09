@@ -4,14 +4,13 @@
 
 import test, { type ExecutionContext } from "ava";
 import getPort from "@ava/get-port";
+import * as dataFE from "@ty-ras/data-frontend";
 import * as http from "node:http";
 import * as http2 from "node:http2";
 import type * as stream from "node:stream";
 import type * as net from "node:net";
 
 import * as spec from "../client";
-import * as errors from "../errors";
-import * as internal from "../internal";
 
 test("Verify that raw string variant works", async (c) => {
   c.plan(2);
@@ -133,7 +132,7 @@ test("Test that non-2xx status code in is handled correctly", async (c) => {
   await c.throwsAsync(
     async () => await callback({ method: "GET", url: "/hello" }),
     {
-      instanceOf: errors.Non2xxStatusCodeError,
+      instanceOf: dataFE.Non2xxStatusCodeError,
       message: `Status code ${statusCode} was returned.`,
     },
   );
@@ -198,7 +197,7 @@ test("Validate that URL sanity check works", async (c) => {
     });
   };
 
-  await verifyURLSanity(internal.DUMMY_ORIGIN, `/${internal.DUMMY_ORIGIN}`);
+  await verifyURLSanity("ftp://__dummy__", `/ftp://__dummy__`);
   await verifyURLSanity("http://example.com", "/http://example.com");
 });
 
@@ -336,7 +335,7 @@ const getExpectedServerIncomingHeaders = (
     ? {}
     : {
         "content-length": `${Buffer.from(body, "utf8").byteLength}`,
-        "content-type": "application/json",
+        "content-type": "application/json; charset=utf8",
       }),
 });
 
